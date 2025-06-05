@@ -59,6 +59,40 @@ CREATE TABLE IF NOT EXISTS "readingHistory" (
 	PRIMARY KEY ("historyID")
 );
 
+-- 4 список для юзерів
+CREATE TABLE IF NOT EXISTS "userRoles" (
+    id serial PRIMARY KEY,
+    username varchar(100) NOT NULL,
+    assigned_role varchar(100) NOT NULL,
+    description text
+);
+INSERT INTO "userRoles" (username, assigned_role, description) VALUES
+('user', 'readonly', 'User with read-only access to SELECT from all tables'),
+('Admin', 'readwrite', 'User with read and write access to all tables');
+
+-- завд №11
+
+-- 1 ROLES
+-- роль Read-only
+CREATE ROLE readonly;
+-- роль Read-write
+CREATE ROLE readwrite;
+
+-- 2 USERS
+-- юзери
+CREATE USER "user" WITH PASSWORD '12345678';
+CREATE USER "Admin" WITH PASSWORD '87654321';
+
+-- присвоєння ролей
+GRANT readonly TO "user";
+GRANT readwrite TO "Admin";
+
+-- 3 PERMISSION
+-- select to "readonly"
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;
+-- full dml to "readwrite"
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO readwrite;
+
 
 
 
@@ -274,3 +308,5 @@ CREATE OR REPLACE VIEW view_available_books WITH (security_barrier) AS
 SELECT * FROM "bookCopies"
 WHERE "copyStatus" = 'Available'
 WITH CHECK OPTION;
+
+
