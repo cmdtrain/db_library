@@ -70,6 +70,149 @@ INSERT INTO "userRoles" (username, assigned_role, description) VALUES
 ('user', 'readonly', 'User with read-only access to SELECT from all tables'),
 ('Admin', 'readwrite', 'User with read and write access to all tables');
 
+
+
+-- =============================
+-- FUNCTIONS
+-- =============================
+
+-- 1. Function to calculate member age in days in the library
+-- Returns number of days since the member joined
+CREATE OR REPLACE FUNCTION fn_member_days_in_library(p_member_id INT)
+RETURNS INT AS $$
+BEGIN
+  RETURN (
+    SELECT CURRENT_DATE - "joinDate"
+    FROM "members"
+    WHERE "memberID" = p_member_id
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- 2. Function to get average rating for a specific book
+CREATE OR REPLACE FUNCTION fn_avg_rating(p_book_id INT)
+RETURNS NUMERIC AS $$
+BEGIN
+  RETURN (
+    SELECT AVG("rating")::NUMERIC(4,2)
+    FROM "reviews"
+    WHERE "bookID" = p_book_id
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- 3. Function to check if a book is available (has any 'Available' copies)
+CREATE OR REPLACE FUNCTION fn_is_book_available(p_book_id INT)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM "bookCopies"
+    WHERE "bookID" = p_book_id AND "copyStatus" = 'Available'
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- завд №12
+-- STORED : SELECT/INSERT
+
+-- 1 Процедура "insert a borrowing record"
+CREATE OR REPLACE PROCEDURE sp_borrow_book(
+  IN p_member_id INT,
+  IN p_book_id INT,
+  IN p_borrow_date DATE,
+  IN p_due_date DATE
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  INSERT INTO "borrowings" ("memberID", "bookID", "borrowingDate", "dueDate")
+  VALUES (p_member_id, p_book_id, p_borrow_date, p_due_date);
+END;
+$$;
+
+
+-- 2 Процедура "get books borrowed by a member"
+CREATE OR REPLACE FUNCTION fn_get_member_borrowings(p_member_id INT)
+RETURNS TABLE (
+    title VARCHAR(255),
+    borrowingDate DATE,
+    dueDate DATE,
+    returnDate DATE
+)
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        b."title",
+        br."borrowingDate",
+        br."dueDate",
+        br."returnDate"
+    FROM "borrowings" br
+    JOIN "books" b ON b."bookId" = br."bookID"
+    WHERE br."memberID" = p_member_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- STORED : UPDATE
+
+-- 3 Процедура "mark a book copy as borrowed"
+CREATE OR REPLACE PROCEDURE sp_update_copy_status_borrowed(p_copy_id INT)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE "bookCopies"
+  SET "copyStatus" = 'Borrowed'
+  WHERE "copyID" = p_copy_id;
+END;
+$$;
+
+
+-- 4 Процедура "update member contact info with rollback support"
+CREATE OR REPLACE PROCEDURE sp_update_member_contact(
+  IN p_member_id INT,
+  IN p_new_contact BIGINT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF LENGTH(p_new_contact::TEXT) != 10 THEN
+    RAISE EXCEPTION 'Invalid contact number. 10 digits.';
+  END IF;
+
+  UPDATE "members"
+  SET "contactInfo" = p_new_contact
+  WHERE "memberID" = p_member_id;
+END;
+$$;
+
+
+-- TEST CALLS
+
+-- тест функцій
+SELECT fn_member_days_in_library(1);
+SELECT fn_avg_rating(1);
+SELECT fn_is_book_available(1);
+
+-- тест stored procedures
+-- "borrow"
+CALL sp_borrow_book(1, 2, CURRENT_DATE, (CURRENT_DATE + INTERVAL '14 days')::DATE);
+
+-- "Update book copy status to 'Borrowed'"
+CALL sp_update_copy_status_borrowed(1);
+
+-- "Update contact info"
+CALL sp_update_member_contact(1, 9123456789);
+
+-- "View member borrowings"
+SELECT * FROM fn_get_member_borrowings(1);
+
+
+
+
 -- завд №11
 
 -- 1 ROLES
@@ -114,11 +257,16 @@ RESTART IDENTITY CASCADE;
 
 -- 1. Members
 -- fix - joinDate для Mixed View не працював
+DROP VIEW IF EXISTS view_active_members_contact;
 ALTER TABLE "members"
 DROP COLUMN IF EXISTS "joinDate";
-
 ALTER TABLE "members"
 ADD COLUMN "joinDate" DATE NOT NULL DEFAULT CURRENT_DATE;
+
+CREATE OR REPLACE VIEW view_active_members_contact AS
+SELECT "memberID", "name", "contactInfo"
+FROM "members"
+WHERE "joinDate" >= CURRENT_DATE - INTERVAL '3 months';
 INSERT INTO "members" ("name", "contactInfo", "joinDate") VALUES
 ('Alice Cooper', 9123456789, '2012-08-02'),
 ('John Smith', 9998887766, '2001-01-14'),
